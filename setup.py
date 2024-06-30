@@ -20,7 +20,7 @@ setup(
     url="https://github.com/Florents-Tselai/duckdb-utils",
     entry_points="""
         [console_scripts]
-        duckdb-utils=duckdb-utils.cli:cli
+        duckdb-utils=duckdb_utils.cli:cli
     """,
     project_urls={
         "Issues": "https://github.com/Florents-Tselai/duckdb-utils/issues",
