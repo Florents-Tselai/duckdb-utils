@@ -32,7 +32,7 @@ jobs:
       - name: Run tests
         run: |-
           ls -lah
-          pytest --cov=duckdb-utils --cov-report xml:coverage.xml --cov-report term
+          pytest --cov=duckdb_utils --cov-report xml:coverage.xml --cov-report term
           ls -lah
 
       - name: Upload coverage report
