@@ -1,12 +1,14 @@
-from setuptools import setup
 import os
+
+from setuptools import setup
 
 VERSION = "0.0.0a1"
 
+
 def get_long_description():
     with open(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md"),
-        encoding="utf8",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md"),
+            encoding="utf8",
     ) as fp:
         return fp.read()
 
@@ -27,10 +29,12 @@ setup(
         "CI": "https://github.com/Florents-Tselai/duckdb-utils/actions",
         "Changelog": "https://github.com/Florents-Tselai/duckdb-utils/releases",
     },
-    license="MIT License",
+    license="BSD License",
     version=VERSION,
     packages=["duckdb_utils"],
-    install_requires=[ "click", "setuptools", "pip"],
-    extras_require={"test": ["pytest", "pytest-cov", "black", "ruff", "click"]},
-    python_requires=">=3.7"
+    install_requires=["sqlite-utils"] +
+                     ["click", "click-default-group>=1.2.3"] +
+                     ["setuptools", "pip"],
+    extras_require={"test": ["pytest", "pytest-cov", "black", "ruff"]},
+    python_requires=">=3.7",
 )

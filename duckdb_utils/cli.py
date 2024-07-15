@@ -1,15 +1,9 @@
 import click
-@click.group()
+from click_default_group import DefaultGroup  # type: ignore
+
+
+@click.group(cls=DefaultGroup, default="query", default_if_no_args=True)
 @click.version_option()
 def cli():
-    """ CLI for duckdb_utils """
+    "Commands for interacting with a SQLite database"
     pass
-
-@cli.command()
-@click.argument(
-    "name",
-    type=str,
-    required=True,
-)
-def hello(name):
-    print(f"Hello, {name}")
