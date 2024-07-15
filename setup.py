@@ -7,8 +7,8 @@ VERSION = "0.0.0a1"
 
 def get_long_description():
     with open(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md"),
-            encoding="utf8",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md"),
+        encoding="utf8",
     ) as fp:
         return fp.read()
 
@@ -32,9 +32,9 @@ setup(
     license="BSD License",
     version=VERSION,
     packages=["duckdb_utils"],
-    install_requires=["sqlite-utils"] +
-                     ["click", "click-default-group>=1.2.3"] +
-                     ["setuptools", "pip"],
+    install_requires=["sqlite-utils"]
+    + ["click", "click-default-group>=1.2.3"]
+    + ["setuptools", "pip"],
     extras_require={"test": ["pytest", "pytest-cov", "black", "ruff"]},
     python_requires=">=3.7",
 )
