@@ -38,8 +38,7 @@ setup(
     + ["tabulate"]
     + ["click", "click-default-group>=1.2.3"],
     extras_require={
-        "test": ["pytest", "pytest-cov", "black", "ruff"],
-        "docs": open("docs/requirements.txt").readlines(),
+        "test": ["pytest", "pytest-cov", "black", "ruff"]
     },
     python_requires=">=3.7",
 )
