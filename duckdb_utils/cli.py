@@ -312,7 +312,7 @@ def create_table(
     name, type pairs, for example:
 
     \b
-        sqlite-utils create-table my.db people \\
+        duckdb-utils create-table my.db people \\
             id integer \\
             name text \\
             height float \\

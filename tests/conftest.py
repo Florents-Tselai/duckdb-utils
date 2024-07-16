@@ -29,6 +29,11 @@ def existing_db():
         INSERT INTO foo (text) values ('one');
         INSERT INTO foo (text) values ('two');
         INSERT INTO foo (text) values ('three');
+        
+        CREATE TABLE bar (c1 TEXT, c2 INTEGER);
+        INSERT INTO bar (c1, c2) values ('c0', 0);
+        INSERT INTO bar (c1, c2) values ('c1', 1);
+        INSERT INTO bar (c1, c2) values ('c2', 2);
     """
     )
     return database
