@@ -46,7 +46,7 @@ def linkcode_resolve(domain, info):
     return github_linkcode_resolve(
         domain=domain,
         info=info,
-        allowed_module_names=["duckdb-utils"],
+        allowed_module_names=["duckdb_utils"],
         github_org_id="Florents-Tselai",
         github_repo_id="duckdb-utils",
         branch="main",
@@ -116,7 +116,7 @@ html_theme = "furo"
 
 html_theme_options = {}
 
-html_title = "duckdb-utils"
+html_title = "tsellm"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -126,7 +126,7 @@ html_static_path = []
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "duckdb-utils-doc"
+htmlhelp_basename = "tsellm-doc"
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -180,10 +180,10 @@ man_pages = [
 texinfo_documents = [
     (
         master_doc,
-        "duckdb-utils",
-        "duckdb-utils documentation",
+        "tsellm",
+        "tsellm documentation",
         author,
-        "duckdb-utils",
-        "",
+        "tsellm",
+        "LLM support in SQLite",
     )
 ]
