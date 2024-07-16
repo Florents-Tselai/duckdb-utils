@@ -2,7 +2,7 @@ import os
 
 from setuptools import setup
 
-VERSION = "0.0.0a1"
+VERSION = "0.1.0a0"
 
 
 def get_long_description():
@@ -29,7 +29,7 @@ setup(
         "CI": "https://github.com/Florents-Tselai/duckdb-utils/actions",
         "Changelog": "https://github.com/Florents-Tselai/duckdb-utils/releases",
     },
-    license="BSD License",
+    license=open("LICENSE").read(),
     version=VERSION,
     packages=["duckdb_utils"],
     install_requires=["setuptools", "pip"]
