@@ -1196,50 +1196,39 @@ def test_create_table(args, schema):
         assert result.exit_code == 0
         db = Database("test.db")
         assert schema == db["t"].schema
-#
-#
-# def test_create_table_foreign_key():
-#     runner = CliRunner()
-#     creates = (
-#         ["authors", "id", "integer", "name", "text", "--pk", "id"],
-#         [
-#             "books",
-#             "id",
-#             "integer",
-#             "title",
-#             "text",
-#             "author_id",
-#             "integer",
-#             "--pk",
-#             "id",
-#             "--fk",
-#             "author_id",
-#             "authors",
-#             "id",
-#         ],
-#     )
-#     with runner.isolated_filesystem():
-#         for args in creates:
-#             result = runner.invoke(
-#                 cli.cli, ["create-table", "books.db"] + args, catch_exceptions=False
-#             )
-#             assert result.exit_code == 0
-#         db = Database("books.db")
-#         assert (
-#                    "CREATE TABLE [authors] (\n"
-#                    "   [id] INTEGER PRIMARY KEY,\n"
-#                    "   [name] TEXT\n"
-#                    ")"
-#                ) == db["authors"].schema
-#         assert (
-#                    "CREATE TABLE [books] (\n"
-#                    "   [id] INTEGER PRIMARY KEY,\n"
-#                    "   [title] TEXT,\n"
-#                    "   [author_id] INTEGER REFERENCES [authors]([id])\n"
-#                    ")"
-#                ) == db["books"].schema
-#
-#
+
+
+def test_create_table_foreign_key():
+    runner = CliRunner()
+    creates = (
+        ["authors", "id", "integer", "name", "text", "--pk", "id"],
+        [
+            "books",
+            "id",
+            "integer",
+            "title",
+            "text",
+            "author_id",
+            "integer",
+            "--pk",
+            "id",
+            "--fk",
+            "author_id",
+            "authors",
+            "id",
+        ],
+    )
+    with runner.isolated_filesystem():
+        for args in creates:
+            result = runner.invoke(
+                cli.cli, ["create-table", "books.db"] + args, catch_exceptions=False
+            )
+            assert result.exit_code == 0
+        db = Database("books.db")
+        assert 'CREATE TABLE authors(id INTEGER PRIMARY KEY, "name" VARCHAR);' == db["authors"].schema
+        assert 'CREATE TABLE books(id INTEGER PRIMARY KEY, title VARCHAR, author_id INTEGER, FOREIGN KEY (author_id) REFERENCES authors(id));' == db["books"].schema
+
+
 # def test_create_table_error_if_table_exists():
 #     runner = CliRunner()
 #     with runner.isolated_filesystem():

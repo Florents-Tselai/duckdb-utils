@@ -7,7 +7,7 @@ EXAMPLES = [
     ("INTEGER DEFAULT '1'", "'1'", "'1'"),
     ("INTEGER DEFAULT 1", "1", "'1'"),
     ("INTEGER DEFAULT (1)", "1", "'1'"),
-    # # Expressions
+    # Expressions
     # (
     #     "TEXT DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))",
     #     "STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')",
@@ -20,7 +20,7 @@ EXAMPLES = [
     ("TEXT DEFAULT current_timestamp", "current_timestamp", "current_timestamp"),
     ("TEXT DEFAULT (CURRENT_TIMESTAMP)", "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP"),
     # Strings
-    # ("TEXT DEFAULT 'CURRENT_TIMESTAMP'", "'CURRENT_TIMESTAMP'", "'CURRENT_TIMESTAMP'"),
+    ("TEXT DEFAULT 'CURRENT_TIMESTAMP'", "'CURRENT_TIMESTAMP'", "'CURRENT_TIMESTAMP'"),
     # ('TEXT DEFAULT "CURRENT_TIMESTAMP"', '"CURRENT_TIMESTAMP"', '"CURRENT_TIMESTAMP"'),
 ]
 
