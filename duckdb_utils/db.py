@@ -6,13 +6,14 @@ from typing import (
     Optional,
     List,
     Dict, Any,
-    Iterable
+    Iterable, Generator
 )
 
 import duckdb
 import sqlite_utils
 from sqlite_utils.db import (Table, ForeignKeysType, resolve_extracts, validate_column_names, COLUMN_TYPE_MAPPING,
-                             jsonify_if_needed, ForeignKey, AlterError, Queryable, View, Column)
+                             jsonify_if_needed, ForeignKey, AlterError, Queryable, View, Column,
+                             DEFAULT, fix_square_braces, PrimaryKeyRequired, Default, SQLITE_MAX_VARS)
 from sqlite_utils.utils import (
     chunks,
     hash_record,
@@ -23,6 +24,7 @@ from sqlite_utils.utils import (
     column_affinity,
     progressbar,
     find_spatialite,
+_flatten
 )
 
 import itertools
@@ -36,39 +38,7 @@ CREATE TABLE IF NOT EXISTS "{}"(
 """.strip()
 
 
-class DuckDBQueryable(Queryable):
-    pass
-
-class DuckDBTable(Table):
-    @property
-    def schema(self) -> str:
-        "SQL schema for this table or view."
-        return self.db.execute(
-            "select sql from duckdb_tables where table_name = ?", (self.name,)
-        ).fetchone()[0]
-
-    @property
-    def columns(self) -> List["Column"]:
-        "List of :ref:`Columns <reference_db_other_column>` representing the columns in this table or view."
-        if not self.exists():
-            return []
-        rows = self.db.execute("PRAGMA table_info(\"{}\")".format(self.name)).fetchall()
-        return [Column(*row) for row in rows]
-
-Table.schema = DuckDBTable.schema
-Table.columns = DuckDBTable.columns
-
-class DuckDBView(View):
-    pass
-
-
-###################################
-
-class DatabaseAPI(sqlite_utils.Database):
-    """For future extraction into a library"""
-
-
-class Database(DatabaseAPI):
+class Database(sqlite_utils.Database):
 
     def __init__(
             self,
@@ -261,10 +231,282 @@ class Database(DatabaseAPI):
         return [r[0] for r in self.execute(sql).fetchall()]
 
     def quote(self, value):
-        """Duckdb doesn't have SELECT quote, so instead f"""
+        """Duckdb doesn't have SELECT quote, so instead we embed SQLite in it :D :D """
         with sqlite3.connect(":memory:") as db:
             return db.execute(
                 # Use SQLite itself to correctly escape this string:
                 "SELECT quote(:value)",
                 {"value": value},
             ).fetchone()[0]
+
+    def query(
+            self, sql: str, params: Optional[Union[Iterable, dict]] = None
+    ) -> Generator[dict, None, None]:
+        """
+        Execute ``sql`` and return an iterable of dictionaries representing each row.
+
+        :param sql: SQL query to execute
+        :param params: Parameters to use in that query - an iterable for ``where id = ?``
+          parameters, or a dictionary for ``where id = :id``
+        """
+        cursor = self.conn.execute(sql, params or tuple())
+        keys = [d[0] for d in cursor.description]
+        for row in cursor.fetchall():
+            yield dict(zip(keys, row))
+
+    def execute(
+            self, sql: str, parameters: Optional[Union[Iterable, dict]] = None
+    ) -> sqlite3.Cursor:
+        """
+        Execute SQL query and return a ``sqlite3.Cursor``.
+
+        :param sql: SQL query to execute
+        :param parameters: Parameters to use in that query - an iterable for ``where id = ?``
+          parameters, or a dictionary for ``where id = :id``
+        """
+        if self._tracer:
+            self._tracer(sql, parameters)
+        if parameters is not None:
+            return self.conn.execute(sql, parameters)
+        else:
+            return self.conn.execute(sql)
+
+
+sqlite_utils.Database.execute = Database.execute
+sqlite_utils.Database.query = Database.query
+
+
+
+class DuckDBTable(Table):
+    @property
+    def schema(self) -> str:
+        "SQL schema for this table or view."
+        return self.db.execute(
+            "select sql from duckdb_tables where table_name = ?", (self.name,)
+        ).fetchone()[0]
+
+    @property
+    def columns(self) -> List["Column"]:
+        "List of :ref:`Columns <reference_db_other_column>` representing the columns in this table or view."
+        if not self.exists():
+            return []
+        rows = self.db.execute("PRAGMA table_info(\"{}\")".format(self.name)).fetchall()
+        return [Column(*row) for row in rows]
+
+    def build_insert_queries_and_params(
+            self,
+            extracts,
+            chunk,
+            all_columns,
+            hash_id,
+            hash_id_columns,
+            upsert,
+            pk,
+            not_null,
+            conversions,
+            num_records_processed,
+            replace,
+            ignore,
+    ):
+        # values is the list of insert data that is passed to the
+        # .execute() method - but some of them may be replaced by
+        # new primary keys if we are extracting any columns.
+        values = []
+        if hash_id_columns and hash_id is None:
+            hash_id = "id"
+        extracts = resolve_extracts(extracts)
+        for record in chunk:
+            record_values = []
+            for key in all_columns:
+                value = jsonify_if_needed(
+                    record.get(
+                        key,
+                        (
+                            None
+                            if key != hash_id
+                            else hash_record(record, hash_id_columns)
+                        ),
+                    )
+                )
+                if key in extracts:
+                    extract_table = extracts[key]
+                    value = self.db[extract_table].lookup({"value": value})
+                record_values.append(value)
+            values.append(record_values)
+
+        queries_and_params = []
+        if upsert:
+            if isinstance(pk, str):
+                pks = [pk]
+            else:
+                pks = pk
+            self.last_pk = None
+            for record_values in values:
+                record = dict(zip(all_columns, record_values))
+                placeholders = list(pks)
+                # Need to populate not-null columns too, or INSERT OR IGNORE ignores
+                # them since it ignores the resulting integrity errors
+                if not_null:
+                    placeholders.extend(not_null)
+                sql = "INSERT OR IGNORE INTO \"{table}\"({cols}) VALUES({placeholders});".format(
+                    table=self.name,
+                    cols=", ".join(["\"{}\"".format(p) for p in placeholders]),
+                    placeholders=", ".join(["?" for p in placeholders]),
+                )
+                queries_and_params.append(
+                    (sql, [record[col] for col in pks] + ["" for _ in (not_null or [])])
+                )
+                # UPDATE [book] SET [name] = 'Programming' WHERE [id] = 1001;
+                set_cols = [col for col in all_columns if col not in pks]
+                if set_cols:
+                    sql2 = "UPDATE [{table}] SET {pairs} WHERE {wheres}".format(
+                        table=self.name,
+                        pairs=", ".join(
+                            "[{}] = {}".format(col, conversions.get(col, "?"))
+                            for col in set_cols
+                        ),
+                        wheres=" AND ".join("[{}] = ?".format(pk) for pk in pks),
+                    )
+                    queries_and_params.append(
+                        (
+                            sql2,
+                            [record[col] for col in set_cols]
+                            + [record[pk] for pk in pks],
+                        )
+                    )
+                # We can populate .last_pk right here
+                if num_records_processed == 1:
+                    self.last_pk = tuple(record[pk] for pk in pks)
+                    if len(self.last_pk) == 1:
+                        self.last_pk = self.last_pk[0]
+
+        else:
+            or_what = ""
+            if replace:
+                or_what = "OR REPLACE "
+            elif ignore:
+                or_what = "OR IGNORE "
+            sql = """
+                INSERT {or_what}INTO \"{table}\" ({columns}) VALUES {rows};
+            """.strip().format(
+                or_what=or_what,
+                table=self.name,
+                columns=", ".join("\"{}\"".format(c) for c in all_columns),
+                rows=", ".join(
+                    "({placeholders})".format(
+                        placeholders=", ".join(
+                            [conversions.get(col, "?") for col in all_columns]
+                        )
+                    )
+                    for record in chunk
+                ),
+            )
+            flat_values = list(itertools.chain(*values))
+            queries_and_params = [(sql, flat_values)]
+
+        return queries_and_params
+
+    def insert_chunk(
+            self,
+            alter,
+            extracts,
+            chunk,
+            all_columns,
+            hash_id,
+            hash_id_columns,
+            upsert,
+            pk,
+            not_null,
+            conversions,
+            num_records_processed,
+            replace,
+            ignore,
+    ):
+        queries_and_params = self.build_insert_queries_and_params(
+            extracts,
+            chunk,
+            all_columns,
+            hash_id,
+            hash_id_columns,
+            upsert,
+            pk,
+            not_null,
+            conversions,
+            num_records_processed,
+            replace,
+            ignore,
+        )
+
+        with self.db.conn:
+            result = None
+            for query, params in queries_and_params:
+                try:
+                    result = self.db.execute(query, params)
+                except OperationalError as e:
+                    if alter and (" column" in e.args[0]):
+                        # Attempt to add any missing columns, then try again
+                        self.add_missing_columns(chunk)
+                        result = self.db.execute(query, params)
+                    elif e.args[0] == "too many SQL variables":
+                        first_half = chunk[: len(chunk) // 2]
+                        second_half = chunk[len(chunk) // 2 :]
+
+                        self.insert_chunk(
+                            alter,
+                            extracts,
+                            first_half,
+                            all_columns,
+                            hash_id,
+                            hash_id_columns,
+                            upsert,
+                            pk,
+                            not_null,
+                            conversions,
+                            num_records_processed,
+                            replace,
+                            ignore,
+                        )
+
+                        self.insert_chunk(
+                            alter,
+                            extracts,
+                            second_half,
+                            all_columns,
+                            hash_id,
+                            hash_id_columns,
+                            upsert,
+                            pk,
+                            not_null,
+                            conversions,
+                            num_records_processed,
+                            replace,
+                            ignore,
+                        )
+
+                    else:
+                        raise
+            if num_records_processed == 1 and not upsert:
+                self.last_rowid = 0 #result.lastrowid #TODO: fixme
+                self.last_pk = self.last_rowid
+                # self.last_rowid will be 0 if a "INSERT OR IGNORE" happened
+                if (hash_id or pk) and self.last_rowid:
+                    row = list(self.rows_where("rowid = ?", [self.last_rowid]))[0]
+                    if hash_id:
+                        self.last_pk = row[hash_id]
+                    elif isinstance(pk, str):
+                        self.last_pk = row[pk]
+                    else:
+                        self.last_pk = tuple(row[p] for p in pk)
+
+        return
+
+
+Table.schema = DuckDBTable.schema
+Table.columns = DuckDBTable.columns
+Table.build_insert_queries_and_params = DuckDBTable.build_insert_queries_and_params
+Table.insert_chunk = DuckDBTable.insert_chunk
+Table.schema = DuckDBTable.schema
+
+
+class DuckDBView(View):
+    pass

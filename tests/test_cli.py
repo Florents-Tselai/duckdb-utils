@@ -1,5 +1,7 @@
 import json
+import os
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from click.testing import CliRunner
@@ -1242,8 +1244,8 @@ def test_create_table_foreign_key():
 #                 'Error: Table "dogs" already exists. Use --replace to delete and replace it.'
 #                 == result.output.strip()
 #         )
-#
-#
+
+
 # def test_create_table_ignore():
 #     runner = CliRunner()
 #     with runner.isolated_filesystem():
@@ -2193,12 +2195,12 @@ def test_create_table_foreign_key():
 #
 #     if option_or_env_var is None:
 #         # Use environment variable instead of option
-#         with mock.patch.dict(os.environ, {"SQLITE_UTILS_DETECT_TYPES": "1"}):
+#         with mock.patch.dict(os.environ, {"DUCKDB_UTILS_DETECT_TYPES": "1"}):
 #             _test()
 #     else:
 #         _test()
-#
-#
+
+
 # @pytest.mark.parametrize("option", ("-d", "--detect-types"))
 # def test_upsert_detect_types(tmpdir, option):
 #     db_path = str(tmpdir / "test.db")

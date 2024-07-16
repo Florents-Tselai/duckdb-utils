@@ -1,8 +1,27 @@
+import io
+import itertools
+import json
+
 import click
 import tabulate
 from click_default_group import DefaultGroup  # type: ignore
-from sqlite_utils.cli import (output_rows, VALID_COLUMN_TYPES)
+from sqlite_utils.cli import (output_rows,
+                              VALID_COLUMN_TYPES, UNICODE_ERROR, verify_is_dict, _find_variables)
 import csv as csv_std
+
+from sqlite_utils.utils import (
+    chunks,
+    hash_record,
+    sqlite3,
+    OperationalError,
+    suggest_column_types,
+    types_for_column_types,
+    column_affinity,
+    progressbar,
+    find_spatialite,
+    _flatten, _compile_code, file_progress, TypeTracker, decode_base64_values
+)
+
 import duckdb_utils
 import sys
 
@@ -451,7 +470,7 @@ def insert_upsert_options(*, require_pk=False):
                             "-d",
                             "--detect-types",
                             is_flag=True,
-                            envvar="SQLITE_UTILS_DETECT_TYPES",
+                            envvar="DUCKDB_UTILS_DETECT_TYPES",
                             help="Detect types for columns in CSV/TSV data",
                         ),
                         click.option(
@@ -473,6 +492,218 @@ def insert_upsert_options(*, require_pk=False):
         return fn
 
     return inner
+
+
+def insert_upsert_implementation(
+        path,
+        table,
+        file,
+        pk,
+        flatten,
+        nl,
+        csv,
+        tsv,
+        empty_null,
+        lines,
+        text,
+        convert,
+        imports,
+        delimiter,
+        quotechar,
+        sniff,
+        no_headers,
+        encoding,
+        batch_size,
+        stop_after,
+        alter,
+        upsert,
+        ignore=False,
+        replace=False,
+        truncate=False,
+        not_null=None,
+        default=None,
+        detect_types=None,
+        analyze=False,
+        load_extension=None,
+        silent=False,
+        bulk_sql=None,
+        functions=None,
+        strict=False,
+):
+    db = duckdb_utils.Database(path)
+    _load_extensions(db, load_extension)
+    if functions:
+        # _register_functions(db, functions)
+        pass
+    if (delimiter or quotechar or sniff or no_headers) and not tsv:
+        csv = True
+    if (nl + csv + tsv) >= 2:
+        raise click.ClickException("Use just one of --nl, --csv or --tsv")
+    if (csv or tsv) and flatten:
+        raise click.ClickException("--flatten cannot be used with --csv or --tsv")
+    if empty_null and not (csv or tsv):
+        raise click.ClickException("--empty-null can only be used with --csv or --tsv")
+    if encoding and not (csv or tsv):
+        raise click.ClickException("--encoding must be used with --csv or --tsv")
+    if pk and len(pk) == 1:
+        pk = pk[0]
+    encoding = encoding or "utf-8-sig"
+
+    # The --sniff option needs us to buffer the file to peek ahead
+    sniff_buffer = None
+    decoded_buffer = None
+    if sniff:
+        sniff_buffer = io.BufferedReader(file, buffer_size=4096)
+        decoded_buffer = io.TextIOWrapper(sniff_buffer, encoding=encoding)
+    else:
+        decoded_buffer = io.TextIOWrapper(file, encoding=encoding)
+
+    tracker = None
+    with file_progress(decoded_buffer, silent=silent) as decoded:
+        if csv or tsv:
+            if sniff:
+                # Read first 2048 bytes and use that to detect
+                first_bytes = sniff_buffer.peek(2048)
+                dialect = csv_std.Sniffer().sniff(
+                    first_bytes.decode(encoding, "ignore")
+                )
+            else:
+                dialect = "excel-tab" if tsv else "excel"
+            csv_reader_args = {"dialect": dialect}
+            if delimiter:
+                csv_reader_args["delimiter"] = delimiter
+            if quotechar:
+                csv_reader_args["quotechar"] = quotechar
+            reader = csv_std.reader(decoded, **csv_reader_args)
+            first_row = next(reader)
+            if no_headers:
+                headers = ["untitled_{}".format(i + 1) for i in range(len(first_row))]
+                reader = itertools.chain([first_row], reader)
+            else:
+                headers = first_row
+            if empty_null:
+                docs = (
+                    dict(zip(headers, [None if cell == "" else cell for cell in row]))
+                    for row in reader
+                )
+            else:
+                docs = (dict(zip(headers, row)) for row in reader)
+            if detect_types:
+                tracker = TypeTracker()
+                docs = tracker.wrap(docs)
+        elif lines:
+            docs = ({"line": line.strip()} for line in decoded)
+        elif text:
+            docs = ({"text": decoded.read()},)
+        else:
+            try:
+                if nl:
+                    docs = (json.loads(line) for line in decoded if line.strip())
+                else:
+                    docs = json.load(decoded)
+                    if isinstance(docs, dict):
+                        docs = [docs]
+            except json.decoder.JSONDecodeError as ex:
+                raise click.ClickException(
+                    "Invalid JSON - use --csv for CSV or --tsv for TSV files\n\nJSON error: {}".format(
+                        ex
+                    )
+                )
+            if flatten:
+                docs = (_flatten(doc) for doc in docs)
+
+        if stop_after:
+            docs = itertools.islice(docs, stop_after)
+
+        if convert:
+            variable = "row"
+            if lines:
+                variable = "line"
+            elif text:
+                variable = "text"
+            fn = _compile_code(convert, imports, variable=variable)
+            if lines:
+                docs = (fn(doc["line"]) for doc in docs)
+            elif text:
+                # Special case: this is allowed to be an iterable
+                text_value = list(docs)[0]["text"]
+                fn_return = fn(text_value)
+                if isinstance(fn_return, dict):
+                    docs = [fn_return]
+                else:
+                    try:
+                        docs = iter(fn_return)
+                    except TypeError:
+                        raise click.ClickException(
+                            "--convert must return dict or iterator"
+                        )
+            else:
+                docs = (fn(doc) or doc for doc in docs)
+
+        extra_kwargs = {
+            "ignore": ignore,
+            "replace": replace,
+            "truncate": truncate,
+            "analyze": analyze,
+            "strict": strict,
+        }
+        if not_null:
+            extra_kwargs["not_null"] = set(not_null)
+        if default:
+            extra_kwargs["defaults"] = dict(default)
+        if upsert:
+            extra_kwargs["upsert"] = upsert
+
+        # docs should all be dictionaries
+        docs = (verify_is_dict(doc) for doc in docs)
+
+        # Apply {"$base64": true, ...} decoding, if needed
+        docs = (decode_base64_values(doc) for doc in docs)
+
+        # For bulk_sql= we use cursor.executemany() instead
+        if bulk_sql:
+            if batch_size:
+                doc_chunks = chunks(docs, batch_size)
+            else:
+                doc_chunks = [docs]
+            for doc_chunk in doc_chunks:
+                with db.conn:
+                    db.conn.cursor().executemany(bulk_sql, doc_chunk)
+            return
+
+        try:
+            db[table].insert_all(
+                docs, pk=pk, batch_size=batch_size, alter=alter, **extra_kwargs
+            )
+        except Exception as e:
+            if (
+                    isinstance(e, OperationalError)
+                    and e.args
+                    and "has no column named" in e.args[0]
+            ):
+                raise click.ClickException(
+                    "{}\n\nTry using --alter to add additional columns".format(
+                        e.args[0]
+                    )
+                )
+            # If we can find sql= and parameters= arguments, show those
+            variables = _find_variables(e.__traceback__, ["sql", "parameters"])
+            if "sql" in variables and "parameters" in variables:
+                raise click.ClickException(
+                    "{}\n\nsql = {}\nparameters = {}".format(
+                        str(e), variables["sql"], variables["parameters"]
+                    )
+                )
+            else:
+                raise
+        if tracker is not None:
+            db[table].transform(types=tracker.types)
+
+        # Clean up open file-like objects
+        if sniff_buffer:
+            sniff_buffer.close()
+        if decoded_buffer:
+            decoded_buffer.close()
 
 
 @cli.command()
@@ -525,7 +756,87 @@ def insert(
         default,
         strict,
 ):
-    pass
+    """
+    Insert records from FILE into a table, creating the table if it
+    does not already exist.
+
+    Example:
+
+        echo '{"name": "Lila"}' | sqlite-utils insert data.db chickens -
+
+    By default the input is expected to be a JSON object or array of objects.
+
+    \b
+    - Use --nl for newline-delimited JSON objects
+    - Use --csv or --tsv for comma-separated or tab-separated input
+    - Use --lines to write each incoming line to a column called "line"
+    - Use --text to write the entire input to a column called "text"
+
+    You can also use --convert to pass a fragment of Python code that will
+    be used to convert each input.
+
+    Your Python code will be passed a "row" variable representing the
+    imported row, and can return a modified row.
+
+    This example uses just the name, latitude and longitude columns from
+    a CSV file, converting name to upper case and latitude and longitude
+    to floating point numbers:
+
+    \b
+        sqlite-utils insert plants.db plants plants.csv --csv --convert '
+          return {
+            "name": row["name"].upper(),
+            "latitude": float(row["latitude"]),
+            "longitude": float(row["longitude"]),
+          }'
+
+    If you are using --lines your code will be passed a "line" variable,
+    and for --text a "text" variable.
+
+    When using --text your function can return an iterator of rows to
+    insert. This example inserts one record per word in the input:
+
+    \b
+        echo 'A bunch of words' | sqlite-utils insert words.db words - \\
+          --text --convert '({"word": w} for w in text.split())'
+    """
+    try:
+        insert_upsert_implementation(
+            path,
+            table,
+            file,
+            pk,
+            flatten,
+            nl,
+            csv,
+            tsv,
+            empty_null,
+            lines,
+            text,
+            convert,
+            imports,
+            delimiter,
+            quotechar,
+            sniff,
+            no_headers,
+            encoding,
+            batch_size,
+            stop_after,
+            alter=alter,
+            upsert=False,
+            ignore=ignore,
+            replace=replace,
+            truncate=truncate,
+            detect_types=detect_types,
+            analyze=analyze,
+            load_extension=load_extension,
+            silent=silent,
+            not_null=not_null,
+            default=default,
+            strict=strict,
+        )
+    except UnicodeDecodeError as ex:
+        raise click.ClickException(UNICODE_ERROR.format(ex))
 
 
 def _load_extensions(db, load_extension):
