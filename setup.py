@@ -32,9 +32,14 @@ setup(
     license="BSD License",
     version=VERSION,
     packages=["duckdb_utils"],
-    install_requires=["sqlite-utils"]
-    + ["click", "click-default-group>=1.2.3"]
-    + ["setuptools", "pip"],
-    extras_require={"test": ["pytest", "pytest-cov", "black", "ruff"]},
+    install_requires=["setuptools", "pip"]
+    + ["sqlite-utils"]
+    + ["duckdb"]
+    + ["tabulate"]
+    + ["click", "click-default-group>=1.2.3"],
+    extras_require={
+        "test": ["pytest", "pytest-cov", "black", "ruff"],
+        "docs": open("docs/requirements.txt").readlines(),
+    },
     python_requires=">=3.7",
 )
