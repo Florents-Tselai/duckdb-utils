@@ -1,7 +1,9 @@
-from setuptools import setup
 import os
 
+from setuptools import setup
+
 VERSION = "0.0.0a1"
+
 
 def get_long_description():
     with open(
@@ -27,10 +29,17 @@ setup(
         "CI": "https://github.com/Florents-Tselai/duckdb-utils/actions",
         "Changelog": "https://github.com/Florents-Tselai/duckdb-utils/releases",
     },
-    license="MIT License",
+    license="BSD License",
     version=VERSION,
     packages=["duckdb_utils"],
-    install_requires=[ "click", "setuptools", "pip"],
-    extras_require={"test": ["pytest", "pytest-cov", "black", "ruff", "click"]},
-    python_requires=">=3.7"
+    install_requires=["setuptools", "pip"]
+    + ["sqlite-utils"]
+    + ["duckdb"]
+    + ["tabulate"]
+    + ["click", "click-default-group>=1.2.3"],
+    extras_require={
+        "test": ["pytest", "pytest-cov", "black", "ruff"],
+        "docs": open("docs/requirements.txt").readlines(),
+    },
+    python_requires=">=3.7",
 )
