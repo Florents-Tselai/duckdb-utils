@@ -46,7 +46,7 @@ def linkcode_resolve(domain, info):
     return github_linkcode_resolve(
         domain=domain,
         info=info,
-        allowed_module_names=["duckdb_utils"],
+        allowed_module_names=["ducdkb_utils"],
         github_org_id="Florents-Tselai",
         github_repo_id="duckdb-utils",
         branch="main",
@@ -184,6 +184,6 @@ texinfo_documents = [
         "duckdb-utils documentation",
         author,
         "duckdb-utils",
-        "CLI tool and Python library for manipulating DuckDB databases",
+        "DuckDB-Utils",
     )
 ]
