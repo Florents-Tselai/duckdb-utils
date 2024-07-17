@@ -31,7 +31,8 @@ from beanbag_docutils.sphinx.ext.github import github_linkcode_resolve
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = [g
+extensions = [
+    "myst_parser",
     "sphinx_copybutton",
     "sphinx.ext.autodoc",
     "sphinx.ext.extlinks",
@@ -45,7 +46,7 @@ def linkcode_resolve(domain, info):
     return github_linkcode_resolve(
         domain=domain,
         info=info,
-        allowed_module_names=["duckdb-utils"],
+        allowed_module_names=["ducdkb_utils"],
         github_org_id="Florents-Tselai",
         github_repo_id="duckdb-utils",
         branch="main",
@@ -182,7 +183,7 @@ texinfo_documents = [
         "duckdb-utils",
         "duckdb-utils documentation",
         author,
-        "duckdb-utils",
-        "",
+        "tsellm",
+        "DuckDB-Utils",
     )
 ]
