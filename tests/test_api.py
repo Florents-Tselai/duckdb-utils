@@ -9,6 +9,8 @@ tests are added here as they are necessary
 
 import types
 
+from sqlite_utils.db import Column
+
 
 def test_api_queryable_existing_table(existing_db):
     # https://sqlite-utils.datasette.io/en/stable/reference.html#sqlite-utils-db-queryable
@@ -32,16 +34,18 @@ def test_api_queryable_existing_table(existing_db):
              {'c1': 'c2', 'c2': 2}])
 
     # Queryable.columns
+    assert bar.columns == [Column(cid=0, name='c1', type='VARCHAR', notnull=False, default_value=None, is_pk=False),
+                           Column(cid=1, name='c2', type='INTEGER', notnull=False, default_value=None, is_pk=False)]
     # Queryable.columns_dict
+    assert bar.columns_dict == {'c1': str, 'c2': int}
 
     # Queryable.schema
+    assert bar.schema == 'CREATE TABLE bar(c1 VARCHAR, c2 INTEGER);'
 
     # Queryable.pks_and_rows_where()
-
-
-
-
-
+    assert list(bar.pks_and_rows_where()) == [(0, {'c1': 'c0', 'c2': 0, 'rowid': 0}),
+                                              (1, {'c1': 'c1', 'c2': 1, 'rowid': 1}),
+                                              (2, {'c1': 'c2', 'c2': 2, 'rowid': 2})]
 
 def test_existing_query(existing_db):
     results = existing_db.query("select * from foo")

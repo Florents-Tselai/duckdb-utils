@@ -6,7 +6,7 @@ from typing import (
     Optional,
     List,
     Dict, Any,
-    Iterable, Generator
+    Iterable, Generator, Tuple
 )
 
 import duckdb
@@ -275,7 +275,35 @@ class Database(sqlite_utils.Database):
 sqlite_utils.Database.execute = Database.execute
 sqlite_utils.Database.query = Database.query
 
+
 class DuckDBQueryable(Queryable):
+    def pks_and_rows_where(
+            self,
+            where: Optional[str] = None,
+            where_args: Optional[Union[Iterable, dict]] = None,
+            order_by: Optional[str] = None,
+            limit: Optional[int] = None,
+            offset: Optional[int] = None,
+    ) -> Generator[Tuple[Any, Dict], None, None]:
+        column_names = [column.name for column in self.columns]
+        pks = [column.name for column in self.columns if column.is_pk]
+        if not pks:
+            column_names.insert(0, "rowid")
+            pks = ["rowid"]
+        select = ",".join("\"{}\"".format(column_name) for column_name in column_names)
+        for row in self.rows_where(
+                select=select,
+                where=where,
+                where_args=where_args,
+                order_by=order_by,
+                limit=limit,
+                offset=offset,
+        ):
+            row_pk = tuple(row[pk] for pk in pks)
+            if len(row_pk) == 1:
+                row_pk = row_pk[0]
+            yield row_pk, row
+
     def rows_where(
             self,
             where: Optional[str] = None,
@@ -326,6 +354,7 @@ class DuckDBQueryable(Queryable):
 
 Queryable.rows_where = DuckDBQueryable.rows_where
 Queryable.count_where = DuckDBQueryable.count_where
+Queryable.pks_and_rows_where = DuckDBQueryable.pks_and_rows_where
 
 class DuckDBTable(Table):
     @property
