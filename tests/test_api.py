@@ -10,15 +10,37 @@ tests are added here as they are necessary
 import types
 
 
-def test_api_queryable_table(existing_db):
+def test_api_queryable_existing_table(existing_db):
+    # https://sqlite-utils.datasette.io/en/stable/reference.html#sqlite-utils-db-queryable
+
     bar = existing_db.table('bar')
+
+    # Queryable.exists()
+    assert bar.exists()
+    assert not existing_db.table('gsdfgf').exists()
+
+    # Queryable.count_where()
+    # Queryable.count
+    assert bar.count_where() == bar.count == 3
+
+    # Queryable.rows
+    # Queryable.rows_where()
     assert (list(bar.rows_where()) ==
             list(bar.rows) ==
             [{'c1': 'c0', 'c2': 0},
              {'c1': 'c1', 'c2': 1},
              {'c1': 'c2', 'c2': 2}])
 
-    # assert bar.count_where() == bar.count == 3
+    # Queryable.columns
+    # Queryable.columns_dict
+
+    # Queryable.schema
+
+    # Queryable.pks_and_rows_where()
+
+
+
+
 
 
 def test_existing_query(existing_db):

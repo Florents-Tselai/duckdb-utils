@@ -314,7 +314,18 @@ class DuckDBQueryable(Queryable):
         for row in cursor.fetchall():
             yield dict(zip(columns, row))
 
+    def count_where(
+        self,
+        where: Optional[str] = None,
+        where_args: Optional[Union[Iterable, dict]] = None,
+    ) -> int:
+        sql = "select count(*) from \"{}\"".format(self.name)
+        if where is not None:
+            sql += " where " + where
+        return self.db.execute(sql, where_args or []).fetchone()[0]
+
 Queryable.rows_where = DuckDBQueryable.rows_where
+Queryable.count_where = DuckDBQueryable.count_where
 
 class DuckDBTable(Table):
     @property
