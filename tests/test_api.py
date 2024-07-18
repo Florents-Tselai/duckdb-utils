@@ -49,12 +49,20 @@ def test_api_queryable_existing_table(existing_db):
 
 
 def test_existing_table_query(existing_db):
+    results = existing_db.query("select * from bar")
+    assert isinstance(results, types.GeneratorType)
+    assert list(results) == [{'c1': 'c0', 'c2': 0}, {'c1': 'c1', 'c2': 1}, {'c1': 'c2', 'c2': 2}]
+
     results = existing_db.query("select * from foo")
     assert isinstance(results, types.GeneratorType)
     assert list(results) == [{'text': 'one'}, {'text': 'two'}, {'text': 'three'}]
 
 
 def test_existing_table_execute(existing_db):
+    results = existing_db.execute("select * from bar").fetchall()
+    assert list(results) == [('c0', 0), ('c1', 1), ('c2', 2)]
+
+
     results = existing_db.execute("select * from foo").fetchall()
     assert list(results) == [('one',), ('two',), ('three',)]
 
