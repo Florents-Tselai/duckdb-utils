@@ -13,15 +13,60 @@
 CLI tool and Python library for manipulating DuckDB databases
 
 **Inspired by and based on [sqlite-utils](https://github.com/simonw/sqlite-utils)**.
+
 Standard DuckDB ships with more powerful batteries than SQLite does,
-which may yield some of of sqlite-utils CLI offerings unnecessary.
-The Python API however that sqlite-utils exposes it's really well-designed 
+which may make some of the sqlite-utils CLI offerings unnecessary.
+The Python API, however that sqlite-utils exposes it's really well-designed 
 and pythonic.
 
 What's worthy of porting and what's not, will be decieded on
 a per-case basis.
 
 ## API
+
+```python
+from duckdb_utils import Database
+
+db = Database(memory=True)
+db.execute(
+  """
+  CREATE TABLE bar (c1 TEXT, c2 INTEGER);
+  INSERT INTO bar (c1, c2) values ('c0', 0);
+  INSERT INTO bar (c1, c2) values ('c1', 1);
+  INSERT INTO bar (c1, c2) values ('c2', 2);
+  """
+)
+
+ bar = db.table('bar')
+
+assert bar.exists()
+assert not existing_db.table('gsdfgf').exists()
+
+assert bar.count_where() == bar.count == 3
+
+assert (list(bar.rows_where()) ==
+        list(bar.rows) ==
+        [{'c1': 'c0', 'c2': 0},
+         {'c1': 'c1', 'c2': 1},
+         {'c1': 'c2', 'c2': 2}])
+
+assert bar.columns == [Column(cid=0, name='c1', type='VARCHAR', notnull=False, default_value=None, is_pk=False),
+                       Column(cid=1, name='c2', type='INTEGER', notnull=False, default_value=None, is_pk=False)]
+
+assert bar.columns_dict == {'c1': str, 'c2': int}
+
+assert bar.schema == 'CREATE TABLE bar(c1 VARCHAR, c2 INTEGER);'
+
+assert list(bar.pks_and_rows_where()) == [(0, {'c1': 'c0', 'c2': 0, 'rowid': 0}),
+                                          (1, {'c1': 'c1', 'c2': 1, 'rowid': 1}),
+                                          (2, {'c1': 'c2', 'c2': 2, 'rowid': 2})]
+
+assert list(db.query("select * from bar")) == [{'c1': 'c0', 'c2': 0}, {'c1': 'c1', 'c2': 1}, {'c1': 'c2', 'c2': 2}]
+
+
+assert list(db.execute("select * from bar").fetchall()) == [('c0', 0), ('c1', 1), ('c2', 2)]
+
+```
 
 
 ## CLI
@@ -42,36 +87,3 @@ Commands:
   tables        List the tables in the database
   views         List the views in the database
 ```
-
-### ```duckdb-utils create-table```
-
-```shell
-Usage: duckdb-utils create-table [OPTIONS] PATH TABLE COLUMNS...
-
-  Add a table with the specified columns. Columns should be specified using
-  name, type pairs, for example:
-
-      duckdb-utils create-table my.db people \
-          id integer \
-          name text \
-          height float \
-          photo blob --pk id
-
-  Valid column types are text, integer, float and blob.
-
-Options:
-  --pk TEXT                 Column to use as primary key
-  --not-null TEXT           Columns that should be created as NOT NULL
-  --default <TEXT TEXT>...  Default value that should be set for a column
-  --fk <TEXT TEXT TEXT>...  Column, other table, other column to set as a
-                            foreign key
-  --ignore                  If table already exists, do nothing
-  --replace                 If table already exists, replace it
-  --transform               If table already exists, try to transform the
-                            schema
-  --load-extension TEXT     Path to SQLite extension, with optional
-                            :entrypoint
-  --strict                  Apply STRICT mode to created table
-  -h, --help                Show this message and exit.
-```
-
