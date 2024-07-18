@@ -1,5 +1,5 @@
 """
-Mos sqlite-utils tests are CLI-oriented and the API
+Most sqlite-utils tests are CLI-oriented and the API
 has been created after the CLI.
 This has proven tricky to port.
 
@@ -47,15 +47,21 @@ def test_api_queryable_existing_table(existing_db):
                                               (1, {'c1': 'c1', 'c2': 1, 'rowid': 1}),
                                               (2, {'c1': 'c2', 'c2': 2, 'rowid': 2})]
 
-def test_existing_query(existing_db):
+
+def test_existing_table_query(existing_db):
     results = existing_db.query("select * from foo")
     assert isinstance(results, types.GeneratorType)
     assert list(results) == [{'text': 'one'}, {'text': 'two'}, {'text': 'three'}]
 
 
-def test_existing_execute(existing_db):
+def test_existing_table_execute(existing_db):
     results = existing_db.execute("select * from foo").fetchall()
     assert list(results) == [('one',), ('two',), ('three',)]
+
+
+def test_existing_table_insert_all(existing_db):
+    bar = existing_db.table('bar')
+    bar.insert_all({'c1': 'c0', 'c2': 0})
 
 # def test_existing_execute_returning_dicts(existing_db):
 #     # Like db.query() but returns a list, included for backwards compatibility
