@@ -10,7 +10,19 @@
 [![codecov](https://codecov.io/gh/Florents-Tselai/duckdb-utils/branch/main/graph/badge.svg)](https://codecov.io/gh/Florents-Tselai/duckdb-utils)
 [![License](https://img.shields.io/badge/BSD%20license-blue.svg)](https://github.com/Florents-Tselai/duckdb-utils/blob/main/LICENSE)
 
-**Inspired by [sqlite-utils]**
+CLI tool and Python library for manipulating DuckDB databases
+
+**Inspired by and based on [sqlite-utils](https://github.com/simonw/sqlite-utils)**.
+Standard DuckDB ships with more powerful batteries than SQLite does,
+which may yield some of of sqlite-utils CLI offerings unnecessary.
+The Python API however that sqlite-utils exposes it's really well-designed 
+and pythonic.
+
+What's worthy of porting and what's not, will be decieded on
+a per-case basis.
+
+## API
+
 
 ## CLI
 
