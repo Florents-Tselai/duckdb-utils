@@ -6,12 +6,12 @@ from typing import (
     Optional,
     List,
     Dict, Any,
-    Iterable, Generator
+    Iterable, Generator, Tuple
 )
 
 import duckdb
 import sqlite_utils
-from sqlite_utils.db import (Table, ForeignKeysType, resolve_extracts, validate_column_names, COLUMN_TYPE_MAPPING,
+from sqlite_utils.db import (Table, ForeignKeysType, resolve_extracts, validate_column_names, COLUMN_TYPE_MAPPING, Queryable,
                              jsonify_if_needed, ForeignKey, AlterError, Queryable, View, Column,
                              DEFAULT, fix_square_braces, PrimaryKeyRequired, Default, SQLITE_MAX_VARS)
 from sqlite_utils.utils import (
@@ -276,6 +276,85 @@ sqlite_utils.Database.execute = Database.execute
 sqlite_utils.Database.query = Database.query
 
 
+class DuckDBQueryable(Queryable):
+    def pks_and_rows_where(
+            self,
+            where: Optional[str] = None,
+            where_args: Optional[Union[Iterable, dict]] = None,
+            order_by: Optional[str] = None,
+            limit: Optional[int] = None,
+            offset: Optional[int] = None,
+    ) -> Generator[Tuple[Any, Dict], None, None]:
+        column_names = [column.name for column in self.columns]
+        pks = [column.name for column in self.columns if column.is_pk]
+        if not pks:
+            column_names.insert(0, "rowid")
+            pks = ["rowid"]
+        select = ",".join("\"{}\"".format(column_name) for column_name in column_names)
+        for row in self.rows_where(
+                select=select,
+                where=where,
+                where_args=where_args,
+                order_by=order_by,
+                limit=limit,
+                offset=offset,
+        ):
+            row_pk = tuple(row[pk] for pk in pks)
+            if len(row_pk) == 1:
+                row_pk = row_pk[0]
+            yield row_pk, row
+
+    def rows_where(
+            self,
+            where: Optional[str] = None,
+            where_args: Optional[Union[Iterable, dict]] = None,
+            order_by: Optional[str] = None,
+            select: str = "*",
+            limit: Optional[int] = None,
+            offset: Optional[int] = None,
+    ) -> Generator[dict, None, None]:
+        """
+        Iterate over every row in this table or view that matches the specified where clause.
+
+        Returns each row as a dictionary. See :ref:`python_api_rows` for more details.
+
+        :param where: SQL where fragment to use, for example ``id > ?``
+        :param where_args: Parameters to use with that fragment - an iterable for ``id > ?``
+          parameters, or a dictionary for ``id > :id``
+        :param order_by: Column or fragment of SQL to order by
+        :param select: Comma-separated list of columns to select - defaults to ``*``
+        :param limit: Integer number of rows to limit to
+        :param offset: Integer for SQL offset
+        """
+        if not self.exists():
+            return
+        sql = "select {} from \"{}\"".format(select, self.name)
+        if where is not None:
+            sql += " where " + where
+        if order_by is not None:
+            sql += " order by " + order_by
+        if limit is not None:
+            sql += " limit {}".format(limit)
+        if offset is not None:
+            sql += " offset {}".format(offset)
+        cursor = self.db.execute(sql, where_args or [])
+        columns = [c[0] for c in cursor.description]
+        for row in cursor.fetchall():
+            yield dict(zip(columns, row))
+
+    def count_where(
+        self,
+        where: Optional[str] = None,
+        where_args: Optional[Union[Iterable, dict]] = None,
+    ) -> int:
+        sql = "select count(*) from \"{}\"".format(self.name)
+        if where is not None:
+            sql += " where " + where
+        return self.db.execute(sql, where_args or []).fetchone()[0]
+
+Queryable.rows_where = DuckDBQueryable.rows_where
+Queryable.count_where = DuckDBQueryable.count_where
+Queryable.pks_and_rows_where = DuckDBQueryable.pks_and_rows_where
 
 class DuckDBTable(Table):
     @property
