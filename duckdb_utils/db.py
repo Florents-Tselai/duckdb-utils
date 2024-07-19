@@ -352,6 +352,7 @@ class DuckDBQueryable(Queryable):
             sql += " where " + where
         return self.db.execute(sql, where_args or []).fetchone()[0]
 
+
 Queryable.rows_where = DuckDBQueryable.rows_where
 Queryable.count_where = DuckDBQueryable.count_where
 Queryable.pks_and_rows_where = DuckDBQueryable.pks_and_rows_where
@@ -579,12 +580,169 @@ class DuckDBTable(Table):
 
         return
 
+    def insert(
+        self,
+        record: Dict[str, Any],
+        pk=DEFAULT,
+        foreign_keys=DEFAULT,
+        column_order: Optional[Union[List[str], Default]] = DEFAULT,
+        not_null: Optional[Union[Iterable[str], Default]] = DEFAULT,
+        defaults: Optional[Union[Dict[str, Any], Default]] = DEFAULT,
+        hash_id: Optional[Union[str, Default]] = DEFAULT,
+        hash_id_columns: Optional[Union[Iterable[str], Default]] = DEFAULT,
+        alter: Optional[Union[bool, Default]] = DEFAULT,
+        ignore: Optional[Union[bool, Default]] = DEFAULT,
+        replace: Optional[Union[bool, Default]] = DEFAULT,
+        extracts: Optional[Union[Dict[str, str], List[str], Default]] = DEFAULT,
+        conversions: Optional[Union[Dict[str, str], Default]] = DEFAULT,
+        columns: Optional[Union[Dict[str, Any], Default]] = DEFAULT,
+        strict: Optional[Union[bool, Default]] = DEFAULT,
+    ) -> "DuckDBTable":
+        pass
+
+    def insert_all(
+        self,
+        records,
+        pk=DEFAULT,
+        foreign_keys=DEFAULT,
+        column_order=DEFAULT,
+        not_null=DEFAULT,
+        defaults=DEFAULT,
+        batch_size=DEFAULT,
+        hash_id=DEFAULT,
+        hash_id_columns=DEFAULT,
+        alter=DEFAULT,
+        ignore=DEFAULT,
+        replace=DEFAULT,
+        truncate=False,
+        extracts=DEFAULT,
+        conversions=DEFAULT,
+        columns=DEFAULT,
+        upsert=False,
+        analyze=False,
+        strict=DEFAULT,
+    ) -> "DuckDBTable":
+        """
+        Like ``.insert()`` but takes a list of records and ensures that the table
+        that it creates (if table does not exist) has columns for ALL of that data.
+
+        Use ``analyze=True`` to run ``ANALYZE`` after the insert has completed.
+        """
+        pk = self.value_or_default("pk", pk)
+        foreign_keys = self.value_or_default("foreign_keys", foreign_keys)
+        column_order = self.value_or_default("column_order", column_order)
+        not_null = self.value_or_default("not_null", not_null)
+        defaults = self.value_or_default("defaults", defaults)
+        batch_size = self.value_or_default("batch_size", batch_size)
+        hash_id = self.value_or_default("hash_id", hash_id)
+        hash_id_columns = self.value_or_default("hash_id_columns", hash_id_columns)
+        alter = self.value_or_default("alter", alter)
+        ignore = self.value_or_default("ignore", ignore)
+        replace = self.value_or_default("replace", replace)
+        extracts = self.value_or_default("extracts", extracts)
+        conversions = self.value_or_default("conversions", conversions) or {}
+        columns = self.value_or_default("columns", columns)
+        strict = self.value_or_default("strict", strict)
+
+        if hash_id_columns and hash_id is None:
+            hash_id = "id"
+
+        if upsert and (not pk and not hash_id):
+            raise PrimaryKeyRequired("upsert() requires a pk")
+        assert not (hash_id and pk), "Use either pk= or hash_id="
+        if hash_id_columns and (hash_id is None):
+            hash_id = "id"
+        if hash_id:
+            pk = hash_id
+
+        assert not (
+                ignore and replace
+        ), "Use either ignore=True or replace=True, not both"
+        all_columns = []
+        first = True
+        num_records_processed = 0
+        # Fix up any records with square braces in the column names
+        records = fix_square_braces(records)
+        # We can only handle a max of 999 variables in a SQL insert, so
+        # we need to adjust the batch_size down if we have too many cols
+        records = iter(records)
+        # Peek at first record to count its columns:
+        try:
+            first_record = next(records)
+        except StopIteration:
+            return self  # It was an empty list
+        num_columns = len(first_record.keys())
+        assert (
+                num_columns <= SQLITE_MAX_VARS
+        ), "Rows can have a maximum of {} columns".format(SQLITE_MAX_VARS)
+        batch_size = max(1, min(batch_size, SQLITE_MAX_VARS // num_columns))
+        self.last_rowid = None
+        self.last_pk = None
+        if truncate and self.exists():
+            self.db.execute("DELETE FROM [{}];".format(self.name))
+        for chunk in chunks(itertools.chain([first_record], records), batch_size):
+            chunk = list(chunk)
+            num_records_processed += len(chunk)
+            if first:
+                if not self.exists():
+                    # Use the first batch to derive the table names
+                    column_types = suggest_column_types(chunk)
+                    column_types.update(columns or {})
+                    self.create(
+                        column_types,
+                        pk,
+                        foreign_keys,
+                        column_order=column_order,
+                        not_null=not_null,
+                        defaults=defaults,
+                        hash_id=hash_id,
+                        hash_id_columns=hash_id_columns,
+                        extracts=extracts,
+                        strict=strict,
+                    )
+                all_columns_set = set()
+                for record in chunk:
+                    all_columns_set.update(record.keys())
+                all_columns = list(sorted(all_columns_set))
+                if hash_id:
+                    all_columns.insert(0, hash_id)
+            else:
+                for record in chunk:
+                    all_columns += [
+                        column for column in record if column not in all_columns
+                    ]
+
+            first = False
+
+            self.insert_chunk(
+                alter,
+                extracts,
+                chunk,
+                all_columns,
+                hash_id,
+                hash_id_columns,
+                upsert,
+                pk,
+                not_null,
+                conversions,
+                num_records_processed,
+                replace,
+                ignore,
+            )
+
+        if analyze:
+            self.analyze()
+
+        return self
+
 
 Table.schema = DuckDBTable.schema
 Table.columns = DuckDBTable.columns
 Table.build_insert_queries_and_params = DuckDBTable.build_insert_queries_and_params
 Table.insert_chunk = DuckDBTable.insert_chunk
 Table.schema = DuckDBTable.schema
+Table.insert_all = DuckDBTable.insert_all
+Table.insert_chunk = DuckDBTable.insert_chunk
 
 
 class DuckDBView(View):
