@@ -41,7 +41,7 @@ db.execute(
   """
 )
 
- bar = db.table('bar')
+bar = db.table('bar')
 
 assert bar.exists()
 assert not existing_db.table('gsdfgf').exists()
@@ -69,7 +69,6 @@ assert list(db.query("select * from bar")) == [{'c1': 'c0', 'c2': 0}, {'c1': 'c1
 
 
 assert list(db.execute("select * from bar").fetchall()) == [('c0', 0), ('c1', 1), ('c2', 2)]
-
 ```
 
 
