@@ -67,10 +67,13 @@ def test_existing_table_execute(existing_db):
     assert list(results) == [('one',), ('two',), ('three',)]
 
 
-def test_existing_table_insert_all(existing_db):
-    # bar = existing_db.table('bar')
-    pass
-    # bar.insert_all({'c1': 'c0', 'c2': 0})
+
+def test_existing_table_insert_all(existing_db_path):
+    bar = existing_db_path.table('bar')
+    extra_rows = [{'c1': 'c00', 'c2': 0}]
+    # bar.insert_all(extra_rows)
+    # assert bar.schema and bar.count
+
 
 # def test_existing_execute_returning_dicts(existing_db):
 #     # Like db.query() but returns a list, included for backwards compatibility
