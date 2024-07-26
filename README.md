@@ -14,10 +14,6 @@ CLI tool and Python library for manipulating DuckDB databases
 
 **Inspired by and based on [sqlite-utils](https://github.com/simonw/sqlite-utils)**.
 
-**NOTE**: I'm currently trying (very hard) to avoid a complete lift-and-shift
-of the sqlite-utils code and use inheritance and monkey-patchin instead,
-but it's proven trickier thatn I thought (hoped really).
-
 Standard DuckDB ships with more powerful batteries than SQLite does,
 which may make some of the sqlite-utils CLI offerings unnecessary.
 The Python API, however that sqlite-utils exposes it's really well-designed 
@@ -25,6 +21,10 @@ and pythonic.
 
 What's worthy of porting and what's not, will be decieded on
 a per-case basis.
+
+**NOTE**: Initially, I tried (very hard) to avoid a complete lift-and-shift
+of the sqlite-utils code and use inheritance and monkey-patching instead,
+but it's proved trickier than I had hoped. Hence, I had to lift-and-shift some core abstractions (see https://github.com/Florents-Tselai/duckdb-utils/pull/14).
 
 ## API
 
